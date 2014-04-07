@@ -1,10 +1,10 @@
-package appia.lib
+package appia.lib.node
 
-import appia.Node
+import scala.slick.driver.PostgresDriver.simple._
+import appia.api.Node
+import scala.collection.TraversableOnce.MonadOps
 
-trait FlatFile extends Node {
-
-  override type Context >: Nothing
+trait FlatFile extends Node[Any] {
 
   type Record
   type Field
@@ -29,6 +29,6 @@ trait FlatFile extends Node {
     }
   }
 
-  override def done(c: Context): Boolean = true
+  override def done(c: Any): Boolean = true
 
 }

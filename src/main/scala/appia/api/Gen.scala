@@ -1,12 +1,14 @@
-package appia
+package appia.api
 
-trait Gen { self =>
+import java.util.concurrent.CountDownLatch
+import java.util.concurrent.Executors
+import scala.collection.mutable.LinkedHashSet
 
-  type Context
+trait Gen[Context] {
 
-  def from: Set[Node { type Context = self.Context }]
+  def from: Set[Node[Context]]
 
-  def to: Set[Node { type Context = self.Context }]
+  def to: Set[Node[Context]]
 
   def run(c: Context)
 
@@ -22,36 +24,30 @@ trait Gen { self =>
 
 object Gen extends com.typesafe.scalalogging.slf4j.StrictLogging {
 
-  private type N[C] = Node { type Context = C }
-  private type G[C] = Gen { type Context = C }
+  def compose[C](gs: Set[Gen[C]]): Gen[C] = new Composition[C](gs)
 
-  def compose[C](gs: Set[G[C]]): G[C] = new Composition[C](gs)
+  def composePar[C](gs: Set[Gen[C]]): Gen[C] = new ThreadedComposition[C](gs)
 
-  def composePar[C](gs: Set[G[C]]): G[C] = new ThreadedComposition[C](gs)
-
-  private class Composition[C](gs: Set[G[C]]) extends Gen {
+  private class Composition[C](gs: Set[Gen[C]]) extends Gen[C] {
     val linearized = toposort(dag(gs))
-    override type Context = C
     override val to = |*(gs.map(_.to))
     override val from = |*(gs.map(_.from)) &~ to
     override def run(c: C) = {
       for (g <- linearized) {
-        logger.debug(s"started ${g.getClass.getSimpleName}")
+        logger.info(s"started ${g.getClass.getSimpleName}")
         g.checkedRun(c)
-        logger.debug(s"finished ${g.getClass.getSimpleName}")
+        logger.info(s"finished ${g.getClass.getSimpleName}")
       }
     }
   }
 
-  private class ThreadedComposition[C](gs: Set[G[C]]) extends Composition[C](gs) { self =>
-    val ended = new Node {
-      override type Context = C
+  private class ThreadedComposition[C](gs: Set[Gen[C]]) extends Composition[C](gs) { self =>
+    val ended = new Node[C] {
       override def done(c: C) = true
     }
-    val end = new Gen {
-      override type Context = C
+    val end = new Gen[C] {
       override val from = self.to
-      override val to = Set[N[C]](ended)
+      override val to = Set[Node[C]](ended)
       override def run(c: C) = {}
     }
     override def run(c: C) = {
@@ -61,10 +57,10 @@ object Gen extends com.typesafe.scalalogging.slf4j.StrictLogging {
       val tasks = for (g <- (linearized :+ end)) yield new Runnable {
         override def run() {
           for (dependency <- g.from) latches(dependency).await()
-          logger.debug(s"started ${g.getClass.getSimpleName}")
+          logger.info(s"started ${g.getClass.getSimpleName}")
           g.checkedRun(c)
           for (produced <- g.to) latches(produced).countDown()
-          logger.debug(s"finished ${g.getClass.getSimpleName}")
+          logger.info(s"finished ${g.getClass.getSimpleName}")
         }
       }
       // even though we have this as a precondition
@@ -79,10 +75,10 @@ object Gen extends com.typesafe.scalalogging.slf4j.StrictLogging {
     }
   }
 
-  private type DAG[C] = Map[G[C], Set[G[C]]]
+  private type DAG[C] = Map[Gen[C], Iterable[Gen[C]]]
 
-  private def dag[C](gs: Set[G[C]]): DAG[C] = {
-    val generatedBy = scala.collection.mutable.Map.empty[N[C], G[C]]
+  private def dag[C](gs: Set[Gen[C]]): DAG[C] = {
+    val generatedBy = scala.collection.mutable.Map.empty[Node[C], Gen[C]]
     for (g <- gs; node <- g.to) {
       // TODO: is this too restrictive?
       assert(!generatedBy.contains(node))
@@ -98,10 +94,10 @@ object Gen extends com.typesafe.scalalogging.slf4j.StrictLogging {
     dag.toMap
   }
 
-  private def toposort[C](dependencies: DAG[C]): Seq[G[C]] = {
+  private def toposort[C](dependencies: DAG[C]): Seq[Gen[C]] = {
     import scala.collection.mutable._
-    val sorted = LinkedHashSet.empty[G[C]]
-    def add(g: G[C]) {
+    val sorted = LinkedHashSet.empty[Gen[C]]
+    def add(g: Gen[C]) {
       if (sorted.contains(g)) return
       for (d <- dependencies(g)) add(d)
       sorted.add(g)
@@ -118,7 +114,7 @@ object Gen extends com.typesafe.scalalogging.slf4j.StrictLogging {
     sorted.toSeq
   }
 
-  private def |*[T](ss: Set[Set[T]]) = ss.fold(Set.empty[T])(_ | _)
+  private def |*[T](ss: Set[Set[T]]): Set[T] = ss.fold(Set.empty[T])(_ | _)
 
   // temporarily unused, will potentially use for evented composition
 
