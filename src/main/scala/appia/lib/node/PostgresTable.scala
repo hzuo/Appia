@@ -1,4 +1,4 @@
-package appia.lib
+package appia.lib.node
 
 import scala.slick.driver.PostgresDriver.simple._
 import scala.slick.jdbc.meta.MTable

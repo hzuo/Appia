@@ -1,8 +1,8 @@
 package appia.lib.node
 
 import scala.slick.driver.PostgresDriver.simple._
+
 import appia.api.Node
-import scala.collection.TraversableOnce.MonadOps
 
 trait FlatFile extends Node[Any] {
 

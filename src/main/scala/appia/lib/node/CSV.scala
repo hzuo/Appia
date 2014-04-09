@@ -13,7 +13,7 @@ trait CSV extends FlatFile {
   protected def strictQuotes = CSVParser.DEFAULT_STRICT_QUOTES
   protected def ignoreLeadingWhitespace = CSVParser.DEFAULT_IGNORE_LEADING_WHITESPACE
 
-  val parser = new CSVParser(separator, quote, escape, strictQuotes, ignoreLeadingWhitespace)
+  protected val parser = new CSVParser(separator, quote, escape, strictQuotes, ignoreLeadingWhitespace)
 
   override def split(line: String): TraversableOnce[Seq[String]] = {
     val fields: Seq[String] = parser.parseLine(line)

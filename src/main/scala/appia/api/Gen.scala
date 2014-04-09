@@ -6,6 +6,8 @@ import scala.collection.mutable.LinkedHashSet
 
 trait Gen[Context] {
 
+  def name: String
+
   def from: Set[Node[Context]]
 
   def to: Set[Node[Context]]
@@ -30,13 +32,17 @@ object Gen extends com.typesafe.scalalogging.slf4j.StrictLogging {
 
   private class Composition[C](gs: Set[Gen[C]]) extends Gen[C] {
     val linearized = toposort(dag(gs))
+    override val name = {
+      val seq = linearized.mkString("", ", ", "")
+      s"Composition($seq)"
+    }
     override val to = |*(gs.map(_.to))
     override val from = |*(gs.map(_.from)) &~ to
     override def run(c: C) = {
       for (g <- linearized) {
-        logger.info(s"started ${g.getClass.getSimpleName}")
+        logger.info(s"started ${g.name}")
         g.checkedRun(c)
-        logger.info(s"finished ${g.getClass.getSimpleName}")
+        logger.info(s"finished ${g.name}")
       }
     }
   }
@@ -46,6 +52,7 @@ object Gen extends com.typesafe.scalalogging.slf4j.StrictLogging {
       override def done(c: C) = true
     }
     val end = new Gen[C] {
+      override val name = "end"
       override val from = self.to
       override val to = Set[Node[C]](ended)
       override def run(c: C) = {}
@@ -57,10 +64,10 @@ object Gen extends com.typesafe.scalalogging.slf4j.StrictLogging {
       val tasks = for (g <- (linearized :+ end)) yield new Runnable {
         override def run() {
           for (dependency <- g.from) latches(dependency).await()
-          logger.info(s"started ${g.getClass.getSimpleName}")
+          logger.info(s"started ${g.name}")
           g.checkedRun(c)
           for (produced <- g.to) latches(produced).countDown()
-          logger.info(s"finished ${g.getClass.getSimpleName}")
+          logger.info(s"finished ${g.name}")
         }
       }
       // even though we have this as a precondition
