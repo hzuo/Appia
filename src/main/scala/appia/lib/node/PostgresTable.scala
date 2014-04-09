@@ -18,9 +18,9 @@ trait PostgresTable extends Node[Session] {
     MTable.getTables(tbl).firstOption.isDefined
   }
 
-  def construct(rows: TraversableOnce[Row])(implicit session: Session) {
+  def construct(rows: TraversableOnce[Row], bufSize: Int = 100000)(implicit session: Session) {
     q.ddl.create
-    for (row <- rows) q.insert(row)
+    rows.toIterator.grouped(bufSize).foreach(q.insertAll)
   }
 
 }
